@@ -1,6 +1,7 @@
 package flavor.pie.example.data;
 
 import com.google.inject.Inject;
+import org.slf4j.Logger;
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.command.CommandException;
 import org.spongepowered.api.command.CommandResult;
@@ -22,10 +23,15 @@ import org.spongepowered.api.text.Text;
 import org.spongepowered.api.text.format.TextColor;
 import org.spongepowered.api.text.format.TextColors;
 
+import java.util.UUID;
+
 @Plugin(id = "exampledataplugin", authors = "pie_flavor")
 public class ExampleDataPlugin {
     @Inject
     PluginContainer container;
+    @Inject
+    Logger logger;
+
     @Listener
     public void preInit(GamePreInitializationEvent e) {
         MyKeys.dummy();
@@ -54,26 +60,27 @@ public class ExampleDataPlugin {
                 .buildAndRegister(container);
         Sponge.getDataManager().registerContentUpdater(MyBoolDataImpl.class, new MyBoolDataImpl.BoolEnabled1To2Updater());
     }
+
     @Listener
-    public void init(GameInitializationEvent e) {
-        Sponge.getCommandManager().register(this, CommandSpec.builder()
-                .arguments(GenericArguments.catalogedElement(Text.of("color"), TextColor.class))
-                .executor(this::setcolor)
-                .build(), "setcolor");
+    public void onLogin(ClientConnectionEvent.Join ev, @Getter(value = "getTargetEntity") Player player) {
+        player.getOrCreate(MyStandardData.class).ifPresent(myData -> {
+            if (myData.amount().get() == 1) {
+                player.offer(myData);
+                player.offer(myData.amount().set(2));
+                player.offer(myData.id().set(UUID.randomUUID()));
+            }
+        });
+
+        player.getOrCreate(MyStandardData.class).ifPresent(myData -> {
+            logger.info("DATA TEST (login): " + player.getName() + " = (amount=" + myData.amount().get() + ", id=" + myData.id().get() + ")");
+        });
     }
 
-    // keys don't work until you add the manipulator
     @Listener
-    public void onJoin(ClientConnectionEvent.Join e,
-                       @Getter("getTargetEntity") @Has(value = MySingularData.class, inverse = true) Player player) {
-        player.offer(player.getOrCreate(MySingularData.class).get());
+    public void onLogout(ClientConnectionEvent.Disconnect ev, @Getter(value = "getTargetEntity") Player player) {
+        player.getOrCreate(MyStandardData.class).ifPresent(myData -> {
+            logger.info("DATA TEST (logout): " + player.getName() + " = (amount=" + myData.amount().get() + ", id=" + myData.id().get() + ")");
+        });
     }
 
-    private CommandResult setcolor(CommandSource src, CommandContext args) throws CommandException {
-        if (src instanceof Player) {
-            ((Player) src).offer(MyKeys.SINGULAR_COLOR, args.<TextColor>getOne("color").get());
-            return CommandResult.success();
-        }
-        throw new CommandException(Text.of(TextColors.RED, "Must be a player!"));
-    }
 }
